@@ -17,4 +17,4 @@ not an exact science but something like:
  - copy `python-install` from resulting distribution to `app/src` inside the android studio project directory
    - note: after this you don't require python-for-android or any of its directories it created, so you can get rid of them
 - copy `python-install/lib/libpython2.7.so` to `app/src/main/jniLibs/armeabi-v7a`
-- zip files in `python-install/lib/python2.7/` (no parent folder) and move to `app/src/main/assets/lib.zip`
+- zip files in `python-install/lib/python2.7/` (no root folder) and move to `app/src/main/assets/lib.zip`
