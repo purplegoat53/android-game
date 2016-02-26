@@ -1,0 +1,184 @@
+from app import gl2, png
+import ctypes, struct, sys
+
+sys.stdout = open("/data/data/com.owner.android_game/stdout.txt", "wb")
+sys.stderr = open("/data/data/com.owner.android_game/stderr.txt", "wb")
+
+import debug
+
+vertex_source = """
+uniform mat4 projection;
+
+attribute vec3 vertex;
+attribute float theta;
+
+void main()
+{
+    mat3 modelview = mat3(cos(theta), -sin(theta),	0,
+    					  sin(theta), cos(theta), 	0,
+    					  0, 		  0,			1);
+
+    gl_Position = projection * vec4((modelview * vertex), 1);
+}
+"""
+
+fragment_source = """
+void main()
+{
+    // Set fragment color from texture
+    gl_FragColor = vec4(0, 0, 1, 1);
+}
+"""
+
+class Shader:
+	def __init__(self, type, source):
+		self.shader = gl2.glCreateShader(type)
+		if self.shader == 0:
+			raise Exception("unable to create shader")
+
+		source_ptr = ctypes.c_char_p(source)
+		source_ptr = ctypes.cast(ctypes.pointer(source_ptr), ctypes.POINTER(ctypes.POINTER(ctypes.c_char)))
+		gl2.glShaderSource(self.shader, 1, source_ptr, None)
+		gl2.glCompileShader(self.shader)
+
+		compiled = ctypes.c_int()
+		gl2.glGetShaderiv(self.shader, gl2.GL_COMPILE_STATUS, ctypes.byref(compiled))
+
+		if not compiled:
+			info_len = ctypes.c_int()
+			gl2.glGetShaderiv(self.shader, gl2.GL_INFO_LOG_LENGTH, ctypes.byref(info_len))
+
+			if info_len.value > 0:
+				info = ctypes.create_string_buffer(info_len.value)
+				gl2.glGetShaderInfoLog(self.shader, info_len, None, info)
+				gl2.glDeleteShader(self.shader)
+				raise Exception(info.value)
+
+	def __del__(self):
+		gl2.glDeleteShader(self.shader)
+
+class Program:
+	def __init__(self, vertex_shader, fragment_shader):
+		self.vertex_shader = vertex_shader
+		self.fragment_shader = fragment_shader
+
+		self.program = gl2.glCreateProgram()
+		gl2.glAttachShader(self.program, self.vertex_shader.shader)
+		gl2.glAttachShader(self.program, self.fragment_shader.shader)
+		gl2.glLinkProgram(self.program)
+
+	def __del__(self):
+		gl2.glDeleteProgram(self.program)
+
+	def use(self):
+		gl2.glUseProgram(self.program)
+
+	def get_attrib(self, attrib):
+		return gl2.glGetAttribLocation(self.program, attrib)
+
+	def get_uniform(self, uniform):
+		return gl2.glGetUniformLocation(self.program, uniform)
+
+"""
+class StreamingVBO:
+	def __init__(self, size):
+		self.buffer = ctypes.c_uint()
+		gl2.glGenBuffers(1, ctypes.byref(self.buffer))
+
+		gl2.glBindBuffer(gl2.GL_ARRAY_BUFFER, self.buffer)
+		gl2.glBufferData(gl2.GL_ARRAY_BUFFER, size, "\0" * size, gl2.GL_STREAM_DRAW)
+
+	def __del__(self):
+		gl2.glDeleteBuffers(1, ctypes.byref(self.buffer))
+
+	def draw(self, verts):
+		data = struct.pack("f" * len(verts), list(sum(verts, ())))
+		gl2.glBindBuffer(gl2.GL_ARRAY_BUFFER, self.buffer)
+		gl2.glBufferSubData(gl2.GL_ARRAY_BUFFER, 0, len(data), data)
+
+		gl2.prog
+		gl2.glGetAttribLocation()
+"""
+
+class StaticVBO:
+	def __init__(self):
+		self.buffer = ctypes.c_uint()
+		gl2.glGenBuffers(1, ctypes.byref(self.buffer))
+
+	def __del__(self):
+		gl2.glDeleteBuffers(1, ctypes.byref(self.buffer))
+
+	def buffer_data(self, data):
+		gl2.glBindBuffer(gl2.GL_ARRAY_BUFFER, self.buffer)
+		gl2.glBufferData(gl2.GL_ARRAY_BUFFER, len(data), data, gl2.GL_STATIC_DRAW)
+		gl2.glBindBuffer(gl2.GL_ARRAY_BUFFER, 0)
+
+	def bind(self):
+		gl2.glBindBuffer(gl2.GL_ARRAY_BUFFER, self.buffer)
+
+pixels = None
+tile_w = None
+tile_h = None
+
+vbo = None
+program = None
+
+def setup():
+	"""
+	global pixels, tile_w, tile_h
+	path, _ = os.path.split(os.path.realpath(__file__))
+	path = os.path.join(path, "bitmapfont.png")
+	with open(path, "rb") as f:
+		reader = png.Reader(file=f)
+		w, h, pixels, opts = reader.read()
+		assert opts["bitdepth"] == 1
+		tile_w = w // 16
+		tile_h = h // 16
+	"""
+
+	verts = [(0, 0, 0), (100, 0, 0), (100, 100, 0), (100, 100, 0), (0, 100, 0), (0, 0, 0)]
+	verts = list(sum(verts, ()))
+	packed = struct.pack("f" * len(verts), *verts)
+
+	global vbo, program
+
+	vbo = StaticVBO()
+	vbo.buffer_data(packed)
+
+	vertex_shader = Shader(gl2.GL_VERTEX_SHADER, vertex_source)
+	fragment_shader = Shader(gl2.GL_FRAGMENT_SHADER, fragment_source)
+
+	program = Program(vertex_shader, fragment_shader)
+	program.use()
+
+	left = 0.0
+	right = 720.0
+	top = 1280.0
+	bottom = 0
+	far = 1.0
+	near = 0.0
+
+	matrix = [(2.0/(right-left), 0, 0, (-right+left)/(right-left)), (0, 2.0/(top-bottom), 0, (-top+bottom)/(top-bottom)), (0, 0, -2.0/(far-near), (-far+near)/(far-near)), (0, 0, 0, 1)]
+	print matrix
+	matrix = list(sum(matrix, ()))
+	matrix = (ctypes.c_float * len(matrix))(*matrix)
+	projection_uniform = program.get_uniform("projection")
+	gl2.glUniformMatrix4fv(projection_uniform, 1, gl2.GL_TRUE, matrix)
+
+theta = 0.0
+
+def draw():
+	global theta
+	gl2.glClearColor(1.0, 0.0, 0.0, 1.0)
+	gl2.glClear(gl2.GL_COLOR_BUFFER_BIT)
+
+	vbo.bind()
+	program.use()
+	vertex_attrib = program.get_attrib("vertex")
+	theta_attrib = program.get_attrib("theta")
+	gl2.glVertexAttrib1f(theta_attrib, theta)
+	gl2.glEnableVertexAttribArray(vertex_attrib)
+	gl2.glVertexAttribPointer(vertex_attrib, 3, gl2.GL_FLOAT, False, 0, 0)
+	gl2.glDrawArrays(gl2.GL_TRIANGLES, 0, 6)
+	gl2.glDisableVertexAttribArray(vertex_attrib)
+	theta += 0.01
