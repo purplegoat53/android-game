@@ -1,0 +1,142 @@
+<html>
+  <head>
+    <title>debug</title>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.3/ace.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.3/mode-python.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
+    <script type="text/javascript" src="http://terminal.jcubic.pl/js/jquery.terminal-min.js"></script>
+    <link rel="stylesheet" type="text/css" href="http://terminal.jcubic.pl/css/jquery.terminal.css">
+    <style type="text/css" media="screen">
+      .tab {
+        border: 1px black solid;
+        border-bottom: 0px;
+        display: inline-block;
+        padding: 5px;
+        margin: 5px;
+        margin-bottom: 0px;
+        font: 18px/normal 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+        color: black;
+      }
+      .selected {
+        background-color: grey;
+        color: white;
+      }
+      .contents {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+      }
+      #tab-contents {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        padding: 0px;
+        margin: 0px;
+        width: 100%;
+        height: 100%;
+      }
+      #interpreter {
+        min-height: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="tabs">
+    </div>
+    <div id="tab-contents">
+    </div>
+    <div id="interpreter">
+    </div>
+    <script>
+      var tabs = JSON.parse(atob("{{tabs}}"));
+      var tab_contents = undefined;
+
+      function switch_tab(tab_el) {
+        var tab = undefined;
+        tabs.forEach(function(x, index, array) {
+          if(x.el == tab_el || x.a_el == tab_el)
+            tab = x;
+        });
+
+        if(tab == undefined) {
+          console.log(tab_el.toString() + " not found");
+          return;
+        }
+
+        tabs.forEach(function(x, index, array) {
+          x.el.classList.remove("selected");
+        });
+        tab.el.classList.add("selected");
+        while(tab_contents.firstChild) {
+          tab_contents.removeChild(tab_contents.firstChild);
+        }
+        tab_contents.appendChild(tab.contents);
+        if(tab.editor == undefined) {
+          var editor = ace.edit(tab.contents_id);
+          editor.setTheme("ace/theme/monokai");
+          editor.getSession().setMode("ace/mode/python");
+          editor.resize();
+          tab.editor = editor;
+        }
+      }
+
+      function eval_stmt(command, term) {
+        if (command !== '') {
+          $.post("/ajax/interpret", {code: command}, function(data) {
+            if(data.exception != undefined)
+              term.error(new String(data.result));
+            else
+              term.echo(new String(data.result));
+          }, "json");
+        } else {
+          term.echo('');
+        }
+      }
+
+      window.onload = function() {
+        tab_contents = document.getElementById("tab-contents");
+
+        tabs.forEach(function(tab, index, array) {
+          var tab_a_el = document.createElement("a");
+          tab_a_el.addEventListener("click", function(event) { switch_tab(this); });
+          tab_a_el.style = "outline: 0;";
+          tab_a_el.href = "#";
+
+          var tab_el = document.createElement("div");
+          tab_el.innerHTML = tab.name;
+          tab_el.classList.add("tab");
+
+          tab_a_el.appendChild(tab_el);
+
+          var contents = document.createElement("div");
+          contents.id = "contents_" + index;
+          contents.classList.add("contents");
+          contents.innerHTML = tab.contents;
+          tab.contents_id = contents.id;
+          tab.contents = contents;
+
+          tab.a_el = tab_a_el;
+          tab.el = tab_el;
+          document.getElementById("tabs").appendChild(tab_a_el);
+
+          $('#interpreter').terminal(eval_stmt, {
+            greetings: 'Python Interpreter',
+            name: 'js_demo',
+            height: 200,
+            prompt: '>>> '
+          });
+        });
+
+        if(tabs.length > 0) {
+          switch_tab(tabs[0].el);
+        }
+      };
+    </script>
+  </body>
+</html>
